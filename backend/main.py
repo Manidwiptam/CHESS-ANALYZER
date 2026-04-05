@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import chess
 import chess.pgn
-import stockfish
+import chess.engine
 import openai
 import os
 import io
@@ -17,51 +17,25 @@ app = FastAPI(title="Chess Analysis API", version="1.0.0")
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for production
-    allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Initialize Stockfish with fallback paths
-STOCKFISH_PATHS = [
-    "/usr/bin/stockfish",  # Linux production
-    "/usr/local/bin/stockfish",  # macOS/Homebrew
-    "stockfish",  # System PATH
-    "/app/stockfish",  # Railway/Docker
-    "/opt/homebrew/bin/stockfish",  # macOS ARM
-    "C:\\Program Files\\stockfish\\stockfish.exe",  # Windows
-    "C:\\stockfish\\stockfish.exe",  # Windows alternative
-]
-
-stockfish_engine = None
-for path in STOCKFISH_PATHS:
-    try:
-        print(f"Trying Stockfish path: {path}")
-        stockfish_engine = stockfish.Stockfish(path=path)
-        stockfish_engine.set_depth(10)  # Reduced for production performance
-        stockfish_engine.set_skill_level(20)  # Max skill
-
-        # Test the engine
-        test_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-        stockfish_engine.set_fen_position(test_fen)
-        best_move = stockfish_engine.get_best_move()
-        print(f"Stockfish initialized successfully at {path}, test move: {best_move}")
-        break
-    except Exception as e:
-        print(f"Failed to initialize Stockfish at {path}: {e}")
-        continue
-
-if stockfish_engine is None:
-    print("WARNING: Could not initialize Stockfish engine!")
-    print("The application will run in demo mode with limited functionality.")
-    print("For full functionality, please install Stockfish chess engine.")
+# Initialize Stockfish engine
+engine = None
+try:
+    engine = chess.engine.SimpleEngine.popen_uci("/usr/bin/stockfish")
+    print("Stockfish engine initialized successfully")
+except Exception as e:
+    print(f"Failed to initialize Stockfish: {e}")
+    print("Application will run in demo mode")
 
 # Initialize OpenAI
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Pydantic models
-class AnalysisRequest(BaseModel):
+class PGNRequest(BaseModel):
     pgn: str
 
 class ExplainRequest(BaseModel):
@@ -100,52 +74,38 @@ def get_move_classification(eval_diff: float) -> str:
     else:
         return "Blunder"
 
-def analyze_position(fen: str, move_uci: str = None) -> dict:
+def analyze_position(board: chess.Board) -> dict:
     """Analyze a chess position using Stockfish"""
-    if stockfish_engine is None:
-        # Fallback: return basic analysis without engine
-        print(f"Stockfish not available, providing basic analysis for FEN: {fen}")
-        return {
-            "best_move": move_uci or "e2e4",  # Default move if none provided
-            "eval": 0,  # Neutral evaluation
-            "fen": fen,
-            "note": "Stockfish engine not available - using basic analysis"
-        }
+    if engine is None:
+        return {"error": "Stockfish not found"}
 
     try:
-        stockfish_engine.set_fen_position(fen)
+        # Get best move and evaluation
+        result = engine.play(board, chess.engine.Limit(time=0.1))
+        best_move = result.move.uci() if result.move else "e2e4"
 
-        # Get best move and evaluation with timeout
-        best_move = stockfish_engine.get_best_move()
-        evaluation = stockfish_engine.get_evaluation()
+        # Get evaluation
+        info = engine.analyse(board, chess.engine.Limit(time=0.1))
+        score = info.get("score", chess.engine.Cp(0))
 
-        # Convert evaluation to centipawns
-        if evaluation["type"] == "cp":
-            eval_cp = evaluation["value"]
-        elif evaluation["type"] == "mate":
-            # Convert mate scores to large centipawn values
-            mate_distance = evaluation["value"]
-            eval_cp = 10000 if mate_distance > 0 else -10000
+        if isinstance(score, chess.engine.Cp):
+            eval_cp = score.score()
+        elif isinstance(score, chess.engine.Mate):
+            eval_cp = 10000 if score.mate() > 0 else -10000
         else:
             eval_cp = 0
 
         return {
             "best_move": best_move,
             "eval": eval_cp,
-            "fen": fen
+            "fen": board.fen()
         }
     except Exception as e:
-        print(f"Error analyzing position {fen}: {e}")
-        # Fallback on error
-        return {
-            "best_move": move_uci or "e2e4",
-            "eval": 0,
-            "fen": fen,
-            "error": f"Analysis failed: {str(e)}"
-        }
+        print(f"Error analyzing position: {e}")
+        return {"error": f"Analysis failed: {str(e)}"}
 
 @app.post("/analyze", response_model=AnalysisResponse)
-async def analyze_game(request: AnalysisRequest):
+async def analyze_game(request: PGNRequest):
     """Analyze a chess game from PGN"""
     try:
         # Parse PGN
@@ -172,11 +132,8 @@ async def analyze_game(request: AnalysisRequest):
             move_count += 1
             print(f"Analyzing move {move_count}: {move.uci()}")
 
-            # Get position before move
-            fen_before = board.fen()
-
-            # Analyze the position
-            analysis = analyze_position(fen_before)
+            # Analyze the position before the move
+            analysis = analyze_position(board)
 
             if "error" in analysis:
                 print(f"Analysis error for move {move.uci()}: {analysis['error']}")
@@ -184,23 +141,22 @@ async def analyze_game(request: AnalysisRequest):
                 analysis = {
                     "best_move": move.uci(),  # Default to played move
                     "eval": 0,
-                    "fen": fen_before
+                    "fen": board.fen()
                 }
 
             # Make the move
             board.push(move)
 
             # Calculate evaluation difference (how much the move changed the position)
-            fen_after = board.fen()
-            if stockfish_engine:
+            if engine:
                 try:
-                    stockfish_engine.set_fen_position(fen_after)
-                    eval_after = stockfish_engine.get_evaluation()
+                    info_after = engine.analyse(board, chess.engine.Limit(time=0.1))
+                    score_after = info_after.get("score", chess.engine.Cp(0))
 
-                    if eval_after["type"] == "cp":
-                        eval_after_cp = eval_after["value"]
-                    elif eval_after["type"] == "mate":
-                        eval_after_cp = 10000 if eval_after["value"] > 0 else -10000
+                    if isinstance(score_after, chess.engine.Cp):
+                        eval_after_cp = score_after.score()
+                    elif isinstance(score_after, chess.engine.Mate):
+                        eval_after_cp = 10000 if score_after.mate() > 0 else -10000
                     else:
                         eval_after_cp = 0
                 except Exception as e:
@@ -278,11 +234,13 @@ Keep the explanation concise but informative, around 100-150 words.
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "engine": "stockfish" if stockfish_engine else "demo",
-        "stockfish_available": stockfish_engine is not None
-    }
+    return {"status": "healthy", "engine": "stockfish" if engine else "demo"}
+
+@app.on_event("shutdown")
+def shutdown_event():
+    """Clean up engine on shutdown"""
+    if engine:
+        engine.quit()
 
 if __name__ == "__main__":
     import uvicorn
