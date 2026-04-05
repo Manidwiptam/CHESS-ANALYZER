@@ -195,7 +195,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   analyzeGame: async (pgn: string) => {
     set({ isAnalyzing: true });
     try {
-      const response = await fetch('http://localhost:8000/analyze', {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      console.log('Making API call to:', `${apiUrl}/analyze`);
+
+      const response = await fetch(`${apiUrl}/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -203,11 +206,17 @@ export const useGameStore = create<GameState>((set, get) => ({
         body: JSON.stringify({ pgn }),
       });
 
+      console.log('API Response status:', response.status);
+      console.log('API Response headers:', Object.fromEntries(response.headers.entries()));
+
       if (!response.ok) {
-        throw new Error('Analysis failed');
+        const errorText = await response.text();
+        console.error('API Error:', errorText);
+        throw new Error(`Analysis failed: ${response.status} ${errorText}`);
       }
 
       const data = await response.json();
+      console.log('API Response data:', data);
 
       // Load the game from PGN
       const game = new Chess();
@@ -258,6 +267,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!analysis || !move) return null;
 
     try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      console.log('Making explanation API call to:', `${apiUrl}/explain`);
+
       // Get FEN before the move
       const tempGame = new Chess();
       for (let i = 0; i < moveIndex; i++) {
@@ -265,7 +277,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       const fen = tempGame.fen();
 
-      const response = await fetch('http://localhost:8000/explain', {
+      const response = await fetch(`${apiUrl}/explain`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -277,11 +289,16 @@ export const useGameStore = create<GameState>((set, get) => ({
         }),
       });
 
+      console.log('Explanation API Response status:', response.status);
+
       if (!response.ok) {
-        throw new Error('Explanation failed');
+        const errorText = await response.text();
+        console.error('Explanation API Error:', errorText);
+        throw new Error(`Explanation failed: ${response.status} ${errorText}`);
       }
 
       const data = await response.json();
+      console.log('Explanation API Response:', data);
       return data.explanation;
     } catch (error) {
       console.error('Explanation error:', error);

@@ -2,11 +2,54 @@
 
 A complete chess analysis platform similar to Chess.com and Lichess, featuring AI-powered move analysis, position evaluation, and an intuitive board editor.
 
+## 🚀 Quick Start
+
+### Local Development
+```bash
+# Clone the repository
+git clone <repository-url>
+cd chess-analyzer
+
+# Install frontend dependencies
+npm install
+
+# Install backend dependencies
+cd backend
+pip install -r requirements.txt
+cd ..
+
+# Start backend (in one terminal)
+cd backend && python start.py
+
+# Start frontend (in another terminal)
+npm run dev
+```
+
+### Docker Development
+```bash
+# Start both services
+docker-compose up --build
+```
+
+## 📦 Deployment
+
+### Backend (Railway/Render)
+1. Deploy the `backend/` directory
+2. Set environment variables: `OPENAI_API_KEY`, `PORT=8000`
+3. The app will auto-detect Stockfish or run in demo mode
+
+### Frontend (Vercel)
+1. Deploy the root directory
+2. Set environment variable: `VITE_API_URL=https://your-backend-url.com`
+3. Vercel will build and deploy automatically
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
+
 ## Features
 
 ### 🎯 Core Functionality
 - **Chess Game Analysis**: Upload PGN files and get detailed move-by-move analysis
-- **Stockfish Integration**: Real-time position evaluation with 15-ply depth
+- **Stockfish Integration**: Real-time position evaluation with 10-ply depth
 - **Move Classification**: Automatic blunder, mistake, inaccuracy detection
 - **AI Explanations**: OpenAI-powered move explanations for beginners
 - **Board Editor**: Lichess-style position setup with drag & drop
@@ -40,6 +83,7 @@ chess-analyzer/
 ├── backend/                 # Python FastAPI backend
 │   ├── main.py             # Main API application
 │   ├── requirements.txt    # Python dependencies
+│   ├── Dockerfile         # Docker configuration
 │   └── .env               # Environment variables
 ├── src/                    # React frontend
 │   ├── components/         # Reusable UI components
