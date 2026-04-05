@@ -15,6 +15,12 @@ export const Board = ({
 }) => {
   const { game, makeMove, fen, boardOrientation, setFen, editorState, setEditorState } = useGameStore();
   const [selectedPiece, setSelectedPiece] = useState<string | null>(null);
+  const [boardPosition, setBoardPosition] = useState(fen);
+
+  // Sync board position with fen changes
+  useEffect(() => {
+    setBoardPosition(fen);
+  }, [fen]);
 
   function onDrop(sourceSquare: string, targetSquare: string) {
     if (isEditor) {
@@ -22,7 +28,9 @@ export const Board = ({
       if (piece) {
         game.remove(sourceSquare as any);
         game.put(piece, targetSquare as any);
-        setFen(game.fen());
+        const newFen = game.fen();
+        setFen(newFen);
+        setBoardPosition(newFen);
         return true;
       }
       return false;
@@ -31,7 +39,7 @@ export const Board = ({
     const move = {
       from: sourceSquare,
       to: targetSquare,
-      promotion: 'q',
+      promotion: 'q', // Default to queen promotion
     };
 
     const result = makeMove(move);
@@ -42,26 +50,39 @@ export const Board = ({
   function onSquareClick(square: string) {
     if (isEditor) {
       if (selectedPiece === 'trash') {
-        game.remove(square as any);
+        // Remove piece from square
+        const piece = game.get(square as any);
+        if (piece) {
+          game.remove(square as any);
+          setFen(game.fen());
+        }
       } else if (selectedPiece) {
+        // Place selected piece on square
         const color = selectedPiece[0] === 'w' ? 'w' : 'b';
         const type = selectedPiece[1].toLowerCase() as any;
+
+        // Remove any existing piece first
+        const existingPiece = game.get(square as any);
+        if (existingPiece) {
+          game.remove(square as any);
+        }
+
+        // Place new piece
         game.put({ type, color }, square as any);
-      } else {
-        game.remove(square as any);
+        setFen(game.fen());
       }
-      setFen(game.fen());
+      // Clear selection after placing/removing
+      setSelectedPiece(null);
     }
   }
-
-  const ChessboardAny = Chessboard as any;
 
   return (
     <div className="space-y-6">
       <div className="relative p-4 clay-card bg-[#6B4226]/5">
         <div className="rounded-2xl overflow-hidden shadow-2xl border-8 border-[#6B4226]/10">
-          <ChessboardAny 
-            position={fen} 
+          <Chessboard 
+            key={boardPosition} // Force re-render when position changes
+            position={boardPosition} 
             onPieceDrop={onDrop} 
             onSquareClick={onSquareClick}
             boardWidth={boardWidth}

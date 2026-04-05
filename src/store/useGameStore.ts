@@ -39,25 +39,14 @@ interface GameState {
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
-  game: new Chess('r1bqkbnr/1ppp1ppp/p1B5/4p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 0 4'),
-  fen: 'r1bqkbnr/1ppp1ppp/p1B5/4p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 0 4',
-  history: [
-    { san: 'e4', classification: 'Book', explanation: 'The King\'s Pawn Opening is the most popular first move for white.' },
-    { san: 'e5', classification: 'Book', explanation: 'The Open Game is a solid response to e4.' },
-    { san: 'Nf3', classification: 'Best', explanation: 'Developing the knight and attacking the pawn on e5.' },
-    { san: 'Nc6', classification: 'Excellent', explanation: 'Developing the knight and defending e5.' },
-    { san: 'Bb5', classification: 'Book', explanation: 'The Ruy Lopez is one of the most studied openings in chess.' },
-    { san: 'a6', classification: 'Good', explanation: 'The Morphy Defense, challenging the bishop immediately.' },
-    { san: 'Bxc6', classification: 'Inaccuracy', explanation: 'The Exchange Variation is playable but gives up the bishop pair early.' },
-  ],
-  currentMoveIndex: 6,
-  evaluation: 40,
+  game: new Chess(),
+  fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+  history: [],
+  currentMoveIndex: -1,
+  evaluation: 0,
   isAnalysisMode: true,
   boardOrientation: 'white',
-  accuracyData: Array.from({ length: 20 }, (_, i) => ({
-    move: i + 1,
-    eval: Math.sin(i / 2) * 2 + (Math.random() - 0.5),
-  })),
+  accuracyData: [],
   editorState: {
     turn: 'w',
     castling: { w: { k: true, q: true }, b: { k: true, q: true } },
@@ -102,18 +91,27 @@ export const useGameStore = create<GameState>((set, get) => ({
   makeMove: (move) => {
     const { game, history, currentMoveIndex } = get();
     try {
-      const result = game.move(move);
+      // Create a copy of the current game state
+      const gameCopy = new Chess(game.fen());
+
+      const result = gameCopy.move(move);
       if (result) {
+        // Update the main game instance
+        game.load(gameCopy.fen());
+
+        // Update history - remove any moves after current index and add new move
         const newHistory = [...history.slice(0, currentMoveIndex + 1), result];
+
         set({
-          game: new Chess(game.fen()),
-          fen: game.fen(),
+          game: gameCopy,
+          fen: gameCopy.fen(),
           history: newHistory,
           currentMoveIndex: newHistory.length - 1,
         });
         return true;
       }
     } catch (e) {
+      console.error('Move failed:', e);
       return false;
     }
     return false;
@@ -139,7 +137,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const newGame = new Chess();
     set({
       game: newGame,
-      fen: 'start',
+      fen: newGame.fen(),
       history: [],
       currentMoveIndex: -1,
       evaluation: 0,
