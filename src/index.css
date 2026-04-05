@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", ui-serif, Georgia, serif;
+
+  --color-clay: #C97B63;
+  --color-sand: #E8C1A0;
+  --color-deep-brown: #6B4226;
+  --color-mud: #F5E9DC;
+
+  --shadow-clay-outer: 8px 8px 16px #d1c5bb, -8px -8px 16px #ffffff;
+  --shadow-clay-inner: inset 4px 4px 8px #d1c5bb, inset -4px -4px 8px #ffffff;
+  --shadow-clay-pressed: inset 6px 6px 12px #d1c5bb, inset -6px -6px 12px #ffffff;
+}
+
+@layer base {
+  body {
+    @apply bg-mud text-deep-brown font-sans selection:bg-clay/30;
+    background-image: url("https://www.transparenttextures.com/patterns/natural-paper.png");
+  }
+}
+
+.clay-card {
+  @apply bg-mud rounded-3xl shadow-[var(--shadow-clay-outer)] border border-white/20;
+}
+
+.clay-inset {
+  @apply bg-mud rounded-2xl shadow-[var(--shadow-clay-inner)];
+}
+
+.clay-button {
+  @apply bg-mud rounded-2xl shadow-[var(--shadow-clay-outer)] transition-all duration-200 active:shadow-[var(--shadow-clay-pressed)] active:scale-95;
+}
+
+.clay-button-primary {
+  @apply bg-clay text-white rounded-2xl shadow-lg transition-all duration-200 hover:brightness-110 active:scale-95;
+}
+
+.grain-overlay {
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 9999;
+  opacity: 0.03;
+  background-image: url("https://www.transparenttextures.com/patterns/natural-paper.png");
+}

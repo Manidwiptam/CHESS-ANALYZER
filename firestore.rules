@@ -1,0 +1,93 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required) - UID from Firebase Auth
+    //   - email: string (required) - User's email address
+    //   - displayName: string (optional) - User's display name
+    //   - photoURL: string (optional) - URL to user's profile picture
+    //   - role: string (required, enum: ['user', 'admin']) - User's role
+    //   - createdAt: timestamp (required) - When the user profile was created
+    //
+    // Collection: games
+    // Document ID: {gameId}
+    // Fields:
+    //   - ownerId: string (required) - UID of the user who saved the game
+    //   - pgn: string (required) - The PGN string of the game
+    //   - title: string (optional) - Optional title for the game
+    //   - createdAt: timestamp (required) - When the game was saved
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.ownerId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "manidwiptamhalder@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'createdAt']) &&
+             data.uid == request.auth.uid &&
+             isValidEmail(data.email) &&
+             data.role in ['user', 'admin'] &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidGame(data) {
+      return data.keys().hasAll(['ownerId', 'pgn', 'createdAt']) &&
+             data.ownerId == request.auth.uid &&
+             data.pgn is string &&
+             data.pgn.size() > 0 &&
+             data.pgn.size() < 100000 &&
+             data.createdAt is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'user' || isAdmin());
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role || isAdmin();
+    }
+
+    match /games/{gameId} {
+      allow read: if isDocOwner() || isAdmin();
+      allow create: if isAuthenticated() && isValidGame(request.resource.data);
+      allow update: if isDocOwner() && isValidGame(request.resource.data) && request.resource.data.ownerId == resource.data.ownerId || isAdmin();
+      allow delete: if isDocOwner() || isAdmin();
+    }
+
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
