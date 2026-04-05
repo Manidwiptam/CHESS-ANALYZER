@@ -214,7 +214,7 @@ Provide a clear, beginner-friendly explanation that covers:
 Keep the explanation concise but informative, around 100-150 words.
 """
 
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You are an expert chess coach explaining moves to beginners."},
