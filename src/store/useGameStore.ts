@@ -69,6 +69,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   })),
 
   setFen: (fen) => {
+    if (!fen || fen.trim() === '') {
+      console.warn('Ignored empty FEN string');
+      return;
+    }
+
     try {
       const newGame = new Chess(fen);
       set({ game: newGame, fen: newGame.fen(), history: [], currentMoveIndex: -1 });
