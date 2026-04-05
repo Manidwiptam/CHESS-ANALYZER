@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useGameStore, MoveClassification } from '../../store/useGameStore';
 import { ClayCard, ClayButton } from '../common/ClayUI';
 import { 
@@ -33,7 +33,7 @@ import {
 } from 'recharts';
 
 export const MoveList = () => {
-  const { history, currentMoveIndex, jumpToMove } = useGameStore();
+  const { history, currentMoveIndex, jumpToMove, analysisData, setCurrentAnalysisIndex } = useGameStore();
 
   const pairs = [];
   for (let i = 0; i < history.length; i += 2) {
@@ -66,7 +66,11 @@ export const MoveList = () => {
               <MoveItem 
                 move={pair.white} 
                 active={currentMoveIndex === pair.index}
-                onClick={() => jumpToMove(pair.index)}
+                analysis={analysisData[pair.index]}
+                onClick={() => {
+                  jumpToMove(pair.index);
+                  setCurrentAnalysisIndex(pair.index);
+                }}
               />
             </div>
             <div className="col-span-5">
@@ -74,7 +78,11 @@ export const MoveList = () => {
                 <MoveItem 
                   move={pair.black} 
                   active={currentMoveIndex === pair.index + 1}
-                  onClick={() => jumpToMove(pair.index + 1)}
+                  analysis={analysisData[pair.index + 1]}
+                  onClick={() => {
+                    jumpToMove(pair.index + 1);
+                    setCurrentAnalysisIndex(pair.index + 1);
+                  }}
                 />
               )}
             </div>
@@ -93,7 +101,7 @@ export const MoveList = () => {
   );
 };
 
-const MoveItem = ({ move, active, onClick }: { move: any; active: boolean; onClick: () => void }) => {
+const MoveItem = ({ move, active, analysis, onClick }: { move: any; active: boolean; analysis?: any; onClick: () => void }) => {
   return (
     <button
       onClick={onClick}
@@ -102,9 +110,7 @@ const MoveItem = ({ move, active, onClick }: { move: any; active: boolean; onCli
       }`}
     >
       <span className="font-bold text-sm">{move.san}</span>
-      {move.classification && (
-        <ClassificationIcon classification={move.classification} size={14} />
-      )}
+      {analysis && <ClassificationIcon classification={analysis.classification} size={14} />}
     </button>
   );
 };
@@ -119,8 +125,24 @@ const NavIconButton = ({ icon: Icon, onClick }: { icon: any; onClick: () => void
 );
 
 export const AnalysisInsights = () => {
-  const { history, currentMoveIndex, evaluation, accuracyData } = useGameStore();
+  const { history, currentMoveIndex, evaluation, accuracyData, analysisData, getMoveExplanation, currentAnalysisIndex } = useGameStore();
+  const [explanation, setExplanation] = useState<string | null>(null);
+  const [isLoadingExplanation, setIsLoadingExplanation] = useState(false);
+
   const currentMove = history[currentMoveIndex];
+  const currentAnalysis = analysisData[currentAnalysisIndex];
+
+  useEffect(() => {
+    if (currentMoveIndex >= 0 && currentAnalysis) {
+      setIsLoadingExplanation(true);
+      getMoveExplanation(currentMoveIndex).then((exp) => {
+        setExplanation(exp);
+        setIsLoadingExplanation(false);
+      });
+    } else {
+      setExplanation(null);
+    }
+  }, [currentMoveIndex, currentAnalysis, getMoveExplanation]);
 
   if (!currentMove) return (
     <ClayCard className="flex flex-col items-center justify-center p-12 text-center space-y-4 bg-mud/30">
@@ -147,22 +169,48 @@ export const AnalysisInsights = () => {
           <div className="space-y-1">
             <h3 className="font-serif font-bold text-xl text-deep-brown">Mitti AI Coach</h3>
             <div className="flex items-center justify-center gap-2">
-              <ClassificationIcon classification={currentMove.classification || 'Good'} />
-              <span className={`text-sm font-bold uppercase tracking-widest ${getClassificationColor(currentMove.classification)}`}>
-                {currentMove.san} is {currentMove.classification || 'a solid move'}
+              {currentAnalysis && <ClassificationIcon classification={currentAnalysis.classification} />}
+              <span className={`text-sm font-bold uppercase tracking-widest ${getClassificationColor(currentAnalysis?.classification || 'Good')}`}>
+                {currentMove.san} is {currentAnalysis?.classification?.toLowerCase() || 'a solid move'}
               </span>
             </div>
+            {currentAnalysis && (
+              <div className="text-xs text-deep-brown/60">
+                Best move: {currentAnalysis.best_move} | Eval: {currentAnalysis.eval > 0 ? '+' : ''}{(currentAnalysis.eval / 100).toFixed(1)}
+              </div>
+            )}
           </div>
 
-          <div className="relative p-4 clay-inset bg-white/60 rounded-2xl text-deep-brown/80 text-sm leading-relaxed italic">
-            <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white/60 rotate-45 border-t border-l border-deep-brown/5" />
-            "{currentMove.explanation || "This move maintains the balance of the position."}"
+          <div className="relative p-4 clay-inset bg-white/60 rounded-2xl text-deep-brown/80 text-sm leading-relaxed italic min-h-[60px] flex items-center justify-center">
+            {isLoadingExplanation ? (
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-clay/30 border-t-clay rounded-full animate-spin" />
+                <span>Analyzing move...</span>
+              </div>
+            ) : explanation ? (
+              <div className="text-left">
+                <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white/60 rotate-45 border-t border-l border-deep-brown/5" />
+                {explanation}
+              </div>
+            ) : (
+              "Click 'Get Explanation' to understand this move better."
+            )}
           </div>
 
           <div className="flex gap-3">
-            <ClayButton variant="primary" className="flex-1 flex items-center justify-center gap-2">
+            <ClayButton
+              onClick={() => {
+                setIsLoadingExplanation(true);
+                getMoveExplanation(currentMoveIndex).then((exp) => {
+                  setExplanation(exp);
+                  setIsLoadingExplanation(false);
+                });
+              }}
+              disabled={isLoadingExplanation}
+              className="flex-1 flex items-center justify-center gap-2"
+            >
               <Zap className="w-4 h-4" />
-              Show Best
+              {isLoadingExplanation ? 'Analyzing...' : 'Get Explanation'}
             </ClayButton>
             <ClayButton className="flex-1 flex items-center justify-center gap-2">
               <Share2 className="w-4 h-4" />

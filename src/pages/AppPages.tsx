@@ -31,15 +31,18 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 
 export const AnalysisPage = () => {
-  const { evaluation, history, currentMoveIndex, resetGame, loadPgn, flipBoard, undoMove } = useGameStore();
+  const { evaluation, history, currentMoveIndex, resetGame, loadPgn, flipBoard, undoMove, analyzeGame, isAnalyzing } = useGameStore();
   const [activeTab, setActiveTab] = useState('overview');
   const [pgnInput, setPgnInput] = useState('');
   const [showUpload, setShowUpload] = useState(false);
 
-  const handlePgnUpload = () => {
-    if (loadPgn(pgnInput)) {
-      setShowUpload(false);
-      setPgnInput('');
+  const handlePgnUpload = async () => {
+    if (pgnInput.trim()) {
+      const success = await analyzeGame(pgnInput);
+      if (success) {
+        setShowUpload(false);
+        setPgnInput('');
+      }
     }
   };
 
@@ -134,10 +137,12 @@ export const AnalysisPage = () => {
           <ClayCard className="flex items-center justify-between p-4 bg-mud/40">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 px-4 py-2 clay-inset bg-white/40 rounded-xl">
-                <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-xs font-bold uppercase tracking-widest text-deep-brown/60">Engine Ready</span>
+                <div className={`w-3 h-3 rounded-full ${isAnalyzing ? 'bg-blue-500 animate-pulse' : 'bg-emerald-500'}`} />
+                <span className="text-xs font-bold uppercase tracking-widest text-deep-brown/60">
+                  {isAnalyzing ? 'Analyzing...' : 'Engine Ready'}
+                </span>
               </div>
-              <div className="text-sm font-mono font-bold text-clay">Depth: 24</div>
+              <div className="text-sm font-mono font-bold text-clay">Depth: 15</div>
             </div>
             
             <div className="flex items-center gap-2">

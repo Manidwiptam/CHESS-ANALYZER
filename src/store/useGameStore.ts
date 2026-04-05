@@ -8,6 +8,7 @@ export interface AnalysisMove extends Partial<Move> {
   explanation?: string;
   eval?: number;
   bestMove?: string;
+  uci?: string;
 }
 
 interface GameState {
@@ -24,7 +25,12 @@ interface GameState {
     castling: { w: { k: boolean; q: boolean }; b: { k: boolean; q: boolean } };
     enPassant: string;
   };
-  
+
+  // Analysis state
+  isAnalyzing: boolean;
+  analysisData: AnalysisMove[];
+  currentAnalysisIndex: number;
+
   // Actions
   setFen: (fen: string) => void;
   loadPgn: (pgn: string) => boolean;
@@ -36,6 +42,11 @@ interface GameState {
   toggleAnalysisMode: (val: boolean) => void;
   flipBoard: () => void;
   setEditorState: (state: Partial<GameState['editorState']>) => void;
+
+  // Analysis actions
+  analyzeGame: (pgn: string) => Promise<boolean>;
+  getMoveExplanation: (moveIndex: number) => Promise<string | null>;
+  setCurrentAnalysisIndex: (index: number) => void;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -52,6 +63,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     castling: { w: { k: true, q: true }, b: { k: true, q: true } },
     enPassant: '-',
   },
+
+  // Analysis state
+  isAnalyzing: false,
+  analysisData: [],
+  currentAnalysisIndex: -1,
 
   setEditorState: (newState) => set((state) => ({
     editorState: { ...state.editorState, ...newState }
@@ -174,4 +190,104 @@ export const useGameStore = create<GameState>((set, get) => ({
   flipBoard: () => set((state) => ({ 
     boardOrientation: state.boardOrientation === 'white' ? 'black' : 'white' 
   })),
+
+  // Analysis methods
+  analyzeGame: async (pgn: string) => {
+    set({ isAnalyzing: true });
+    try {
+      const response = await fetch('http://localhost:8000/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ pgn }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Analysis failed');
+      }
+
+      const data = await response.json();
+
+      // Load the game from PGN
+      const game = new Chess();
+      game.loadPgn(pgn);
+
+      // Create history with analysis data
+      const history: AnalysisMove[] = [];
+      const moves = game.history({ verbose: true });
+
+      moves.forEach((move, index) => {
+        const analysis = data.moves[index];
+        if (analysis) {
+          history.push({
+            ...move,
+            classification: analysis.classification as MoveClassification,
+            eval: analysis.eval,
+            bestMove: analysis.best_move,
+            uci: analysis.move,
+          });
+        } else {
+          history.push(move);
+        }
+      });
+
+      set({
+        game,
+        fen: game.fen(),
+        history,
+        currentMoveIndex: history.length - 1,
+        analysisData: data.moves,
+        currentAnalysisIndex: data.moves.length - 1,
+        isAnalyzing: false,
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Analysis error:', error);
+      set({ isAnalyzing: false });
+      return false;
+    }
+  },
+
+  getMoveExplanation: async (moveIndex: number) => {
+    const { analysisData, history } = get();
+    const analysis = analysisData[moveIndex];
+    const move = history[moveIndex];
+
+    if (!analysis || !move) return null;
+
+    try {
+      // Get FEN before the move
+      const tempGame = new Chess();
+      for (let i = 0; i < moveIndex; i++) {
+        tempGame.move(history[i] as any);
+      }
+      const fen = tempGame.fen();
+
+      const response = await fetch('http://localhost:8000/explain', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          move: analysis.move,
+          best_move: analysis.best_move,
+          fen: fen,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Explanation failed');
+      }
+
+      const data = await response.json();
+      return data.explanation;
+    } catch (error) {
+      console.error('Explanation error:', error);
+      return null;
+    }
+  },
+
+  setCurrentAnalysisIndex: (index) => set({ currentAnalysisIndex: index }),
 }));
